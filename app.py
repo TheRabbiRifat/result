@@ -32,7 +32,7 @@ def convert_to_pdf():
         
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Extract hidden inputs
+        # Extract hidden inputs including __RequestVerificationToken
         hidden_inputs = {}
         for hidden_input in soup.find_all("input", type="hidden"):
             hidden_inputs[hidden_input.get("name")] = hidden_input.get("value", "")
@@ -78,8 +78,9 @@ def submit_form():
         birth_date = request.json.get('BirthDate')
         captcha = request.json.get('CaptchaInputText')
         captcha_hidden = request.json.get('CaptchaDeText')
+        verification_token = request.json.get('__RequestVerificationToken')  # Include the token
 
-        if not all([ubrn, birth_date, captcha, captcha_hidden]):
+        if not all([ubrn, birth_date, captcha, captcha_hidden, verification_token]):
             return jsonify({'error': 'Missing form fields'}), 400
 
         # Start a session to fetch the initial page and extract hidden inputs
@@ -99,7 +100,7 @@ def submit_form():
 
         # Prepare form data
         form_data = {
-            '__RequestVerificationToken': hidden_inputs.get('__RequestVerificationToken', ''),
+            '__RequestVerificationToken': verification_token,
             'UBRN': ubrn,
             'BirthDate': birth_date,
             'CaptchaInputText': captcha,
