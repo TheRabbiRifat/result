@@ -111,16 +111,19 @@ def submit_form():
         submit_response = requests_session.post(FORM_URL, data=form_data, verify=False, timeout=10)
         submit_response.raise_for_status()
 
-        # Parse the response to extract the result table
+        # Parse the response to extract the specific div content
         result_soup = BeautifulSoup(submit_response.text, 'html.parser')
-        result_table = result_soup.find('table')  # Assuming the result is in a table
+        target_div = result_soup.find('div', class_='container body-content')
 
-        if result_table:
-            # Convert the result table to HTML or text and return
-            result_html = str(result_table)
-            return jsonify({'status': 'success', 'result': result_html})
+        if target_div:
+            # Convert the div to HTML and return it in the response
+            target_div_html = str(target_div)
+            return jsonify({'status': 'success', 'content': target_div_html})
         else:
-            return jsonify({'status': 'failed', 'message': 'No result table found'}), 400
+            return jsonify({'status': 'failed', 'message': 'Target div not found'}), 400
+
+    except Exception as e:
+        return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
 
     except Exception as e:
         return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
