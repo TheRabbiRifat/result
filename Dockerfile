@@ -1,20 +1,30 @@
-# Use the official Python image from the Docker Hub
+# Use the official Python image with a version of your choice
 FROM python:3.11-slim
 
-# Set the working directory in the container
+# Set environment variables to ensure that Python runs in a consistent environment
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set the working directory inside the container
 WORKDIR /app
 
 # Copy the requirements file into the container
 COPY requirements.txt .
 
-# Install the dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install the dependencies from requirements.txt
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
-# Copy the rest of the application code into the container
+# Install wkhtmltopdf and dependencies
+RUN apt-get update && apt-get install -y \
+    wkhtmltopdf \
+    && apt-get clean
+
+# Copy the entire project into the container
 COPY . .
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Expose the port Flask will run on
+EXPOSE 8080
 
-# Define the command to run the app
-CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]
+# Define the command to run the Flask application
+CMD ["python", "app.py"]
