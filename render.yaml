@@ -1,11 +1,12 @@
 services:
   - type: web
-    name: flask-app
-    env: docker
+    name: flask-scrape-pdf
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
     plan: free
-    dockerfilePath: ./Dockerfile
-    buildCommand: ''
-    startCommand: 'flask run --host 0.0.0.0 --port 5000'
-    routes:
-      - src: /*
-        dest: /
+    envVars:
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
