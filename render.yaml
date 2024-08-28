@@ -1,12 +1,18 @@
 services:
   - type: web
-    name: flask-scrape-pdf
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python app.py"
+    name: flask-app
+    env: docker
     plan: free
-    envVars:
-      - key: PYTHONDONTWRITEBYTECODE
-        value: "1"
-      - key: PYTHONUNBUFFERED
-        value: "1"
+    dockerfile_path: ./Dockerfile
+    build_command: ""
+    start_command: "python app.py"
+    ports:
+      - port: 8080
+    env_vars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        value: your_secret_key_here
+    health_check_path: "/"
+
+# Optional: You can also add other configurations like custom domains, SSL certificates, etc.
