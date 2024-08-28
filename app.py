@@ -3,7 +3,6 @@ import io
 from flask import Flask, jsonify, request
 from flask_session import Session
 from pyppeteer import launch
-from PIL import Image
 import fitz  # PyMuPDF
 from bs4 import BeautifulSoup
 
