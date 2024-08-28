@@ -1,30 +1,45 @@
-# Use the official Python image with a version of your choice
+# Use the official Python image from the Docker Hub
 FROM python:3.11-slim
 
-# Set environment variables to ensure that Python runs in a consistent environment
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
 
-# Set the working directory inside the container
-WORKDIR /app
-
-# Copy the requirements file into the container
-COPY requirements.txt .
-
-# Install the dependencies from requirements.txt
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
-
-# Install wkhtmltopdf and dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    wkhtmltopdf \
-    && apt-get clean
+    wget \
+    ca-certificates \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libgbm1 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxss1 \
+    libxtst6 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libatk1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    fonts-liberation \
+    libappindicator3-1 \
+    xdg-utils \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy the entire project into the container
+# Install Python dependencies
+WORKDIR /app
+COPY requirements.txt requirements.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Copy the application code
 COPY . .
 
-# Expose the port Flask will run on
+# Expose the port the app runs on
 EXPOSE 8080
 
-# Define the command to run the Flask application
+# Run the application
 CMD ["python", "app.py"]
