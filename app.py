@@ -14,8 +14,13 @@ app.config['SECRET_KEY'] = 'your_secret_key_here'
 app.config['PERMANENT_SESSION_LIFETIME'] = 300  # 5 minutes
 Session(app)
 
-# The URL that will always be scraped
 TARGET_URL = 'https://everify.bdris.gov.bd'
+
+def fetch_page_content_sync(url):
+    return asyncio.run(fetch_page_content(url))
+
+def convert_to_pdf_sync(url):
+    return asyncio.run(convert_to_pdf(url))
 
 async def fetch_page_content(url):
     browser = await launch()
@@ -34,24 +39,19 @@ async def convert_to_pdf(url):
     return pdf_data
 
 @app.route('/convert-to-pdf', methods=['POST'])
-async def convert_to_pdf_endpoint():
+def convert_to_pdf_endpoint():
     try:
-        # Fetch the webpage content
-        page_content = await fetch_page_content(TARGET_URL)
+        page_content = fetch_page_content_sync(TARGET_URL)
 
-        # Parse hidden inputs
         soup = BeautifulSoup(page_content, 'html.parser')
         hidden_inputs = {input_tag.get("name"): input_tag.get("value", "") for input_tag in soup.find_all("input", type="hidden")}
 
-        # Convert webpage to PDF
-        pdf_data = await convert_to_pdf(TARGET_URL)
+        pdf_data = convert_to_pdf_sync(TARGET_URL)
 
-        # Save the PDF to a temporary file
         pdf_path = '/tmp/webpage.pdf'
         with open(pdf_path, 'wb') as f:
             f.write(pdf_data)
 
-        # Extract images from PDF
         pdf_document = fitz.open(pdf_path)
         first_image_base64 = None
 
@@ -64,7 +64,7 @@ async def convert_to_pdf_endpoint():
                 image_bytes = base_image["image"]
                 content_type = base_image["ext"]
                 first_image_base64 = f"data:image/{content_type};base64," + base64.b64encode(image_bytes).decode('utf-8')
-                break  # Exit after extracting the first image
+                break
 
         pdf_document.close()
 
@@ -73,17 +73,16 @@ async def convert_to_pdf_endpoint():
 
         return jsonify({
             'status': 'success',
-            'captcha': first_image_base64,  # Provide the first image as 'captcha'
-            'hidden_inputs': hidden_inputs  # Include hidden inputs in the response
+            'captcha': first_image_base64,
+            'hidden_inputs': hidden_inputs
         })
 
     except Exception as e:
         return jsonify({'error': 'Conversion Error', 'details': str(e)}), 500
 
 @app.route('/submit-form', methods=['POST'])
-async def submit_form():
+def submit_form():
     try:
-        # Receive form data from the client
         form_data = request.json
 
         ubrn = form_data.get('UBRN')
@@ -95,32 +94,10 @@ async def submit_form():
         if not all([ubrn, birth_date, captcha_input_text, captcha_de_text, verification_token]):
             return jsonify({'error': 'Missing form fields'}), 400
 
-        # Launch browser and navigate to the target URL
-        browser = await launch()
-        page = await browser.newPage()
-        await page.goto(TARGET_URL, {'waitUntil': 'networkidle2'})
+        response_content = asyncio.run(submit_form_async(ubrn, birth_date, captcha_input_text, captcha_de_text, verification_token))
 
-        # Fill in the form fields
-        await page.type('input[name="UBRN"]', ubrn)
-        await page.type('input[name="BirthDate"]', birth_date)
-        await page.type('input[name="CaptchaInputText"]', captcha_input_text)
-        await page.type('input[name="CaptchaDeText"]', captcha_de_text)
-        await page.evaluate(f'document.querySelector(\'input[name="__RequestVerificationToken"]\').value = "{verification_token}";')
-
-        # Click the submit button
-        await page.click('button[type="submit"]')  # Adjust the selector if needed
-
-        # Wait for navigation or response after submission
-        await page.waitForNavigation({'waitUntil': 'networkidle2'})
-
-        # Get the response content
-        response_content = await page.content()
-
-        # Parse the response to extract the specific div content
         result_soup = BeautifulSoup(response_content, 'html.parser')
         target_div = result_soup.find('div', class_='container body-content')
-
-        await browser.close()
 
         if target_div:
             target_div_html = str(target_div)
@@ -131,7 +108,23 @@ async def submit_form():
     except Exception as e:
         return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
 
+async def submit_form_async(ubrn, birth_date, captcha_input_text, captcha_de_text, verification_token):
+    browser = await launch()
+    page = await browser.newPage()
+    await page.goto(TARGET_URL, {'waitUntil': 'networkidle2'})
+
+    await page.type('input[name="UBRN"]', ubrn)
+    await page.type('input[name="BirthDate"]', birth_date)
+    await page.type('input[name="CaptchaInputText"]', captcha_input_text)
+    await page.type('input[name="CaptchaDeText"]', captcha_de_text)
+    await page.evaluate(f'document.querySelector(\'input[name="__RequestVerificationToken"]\').value = "{verification_token}";')
+
+    await page.click('button[type="submit"]')
+    await page.waitForNavigation({'waitUntil': 'networkidle2'})
+
+    response_content = await page.content()
+    await browser.close()
+    return response_content
+
 if __name__ == '__main__':
-    import asyncio
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(app.run(host='0.0.0.0', port=8080))
+    app.run(host='0.0.0.0', port=8080)
