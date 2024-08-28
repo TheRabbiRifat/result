@@ -16,6 +16,7 @@ Session(app)
 
 # The URL that will always be scraped
 TARGET_URL = 'https://everify.bdris.gov.bd'
+FORM_URL = 'https://everify.bdris.gov.bd/UBRNVerification/Search'
 
 @app.route('/convert-to-pdf', methods=['POST'])
 def convert_to_pdf():
@@ -73,43 +74,59 @@ def convert_to_pdf():
 def submit_form():
     try:
         # Receive form data from the client
-        form_data = request.json  # Expecting the full form data to be provided as JSON
+        form_data = request.json
 
-        if not form_data:
+        ubrn = form_data.get('UBRN')
+        birth_date = form_data.get('BirthDate')
+        captcha_input_text = form_data.get('CaptchaInputText')
+        captcha_de_text = form_data.get('CaptchaDeText')
+        verification_token = form_data.get('__RequestVerificationToken')
+
+        if not all([ubrn, birth_date, captcha_input_text, captcha_de_text, verification_token]):
             return jsonify({'error': 'Missing form fields'}), 400
 
         # Start a session to fetch the initial page and extract hidden inputs
-        requests_session = requests.Session()
-        requests_session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
-        })
+        with requests.Session() as session:
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
+            })
 
-        response = requests_session.get(TARGET_URL, verify=False, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+            # Fetch the form page
+            response = session.get(TARGET_URL, verify=False, timeout=10)
+            response.raise_for_status()
 
-        # Extract and include any hidden inputs required by the form
-        hidden_inputs = {}
-        for hidden_input in soup.find_all("input", type="hidden"):
-            hidden_inputs[hidden_input.get("name")] = hidden_input.get("value", "")
+            # Parse the page to extract hidden inputs
+            soup = BeautifulSoup(response.text, 'html.parser')
+            hidden_inputs = {input_tag.get('name'): input_tag.get('value', '') for input_tag in soup.find_all('input', type='hidden')}
+            
+            # Add the provided values to hidden inputs
+            hidden_inputs.update({
+                '__RequestVerificationToken': verification_token,
+                'UBRN': ubrn,
+                'BirthDate': birth_date,
+                'CaptchaInputText': captcha_input_text,
+                'CaptchaDeText': captcha_de_text,
+            })
 
-        # Merge hidden inputs with the provided form data
-        form_data.update(hidden_inputs)
+            # Prepare the form data
+            multipart_form_data = {key: (None, value) for key, value in hidden_inputs.items()}
 
-        # Submit the form with the provided and hidden values
-        submit_response = requests_session.post(TARGET_URL, data=form_data, verify=False, timeout=10)
-        submit_response.raise_for_status()
+            # Submit the form with multipart/form-data
+            submit_response = session.post(FORM_URL, files=multipart_form_data, verify=False, timeout=10)
+            submit_response.raise_for_status()
 
-        # Parse the response to extract the specific div content
-        result_soup = BeautifulSoup(submit_response.text, 'html.parser')
-        target_div = result_soup.find('div', class_='container body-content')
+            # Parse the response to extract the specific div content
+            result_soup = BeautifulSoup(submit_response.text, 'html.parser')
+            target_div = result_soup.find('div', class_='container body-content')
 
-        if target_div:
-            # Convert the div to HTML and return it in the response
-            target_div_html = str(target_div)
-            return jsonify({'status': 'success', 'content': target_div_html})
-        else:
-            return jsonify({'status': 'failed', 'message': 'Target div not found'}), 400
+            if target_div:
+                target_div_html = str(target_div)
+                return jsonify({'status': 'success', 'content': target_div_html})
+            else:
+                return jsonify({'status': 'failed', 'message': 'Target div not found'}), 400
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': 'Form Submission Error', 'details': e.response.text}), 500
 
     except Exception as e:
         return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
