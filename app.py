@@ -16,7 +16,6 @@ Session(app)
 
 # The URL that will always be scraped
 TARGET_URL = 'https://everify.bdris.gov.bd'
-FORM_URL = 'https://everify.bdris.gov.bd/UBRNVerification/Search'
 
 @app.route('/convert-to-pdf', methods=['POST'])
 def convert_to_pdf():
@@ -74,13 +73,9 @@ def convert_to_pdf():
 def submit_form():
     try:
         # Receive form data from the client
-        ubrn = request.json.get('UBRN')
-        birth_date = request.json.get('BirthDate')
-        captcha = request.json.get('CaptchaInputText')
-        captcha_hidden = request.json.get('CaptchaDeText')
-        verification_token = request.json.get('__RequestVerificationToken')  # Include the token
+        form_data = request.json  # Expecting the full form data to be provided as JSON
 
-        if not all([ubrn, birth_date, captcha, captcha_hidden, verification_token]):
+        if not form_data:
             return jsonify({'error': 'Missing form fields'}), 400
 
         # Start a session to fetch the initial page and extract hidden inputs
@@ -98,17 +93,11 @@ def submit_form():
         for hidden_input in soup.find_all("input", type="hidden"):
             hidden_inputs[hidden_input.get("name")] = hidden_input.get("value", "")
 
-        # Prepare form data
-        form_data = {
-            '__RequestVerificationToken': verification_token,
-            'UBRN': ubrn,
-            'BirthDate': birth_date,
-            'CaptchaInputText': captcha,
-            'CaptchaDeText': captcha_hidden,
-        }
+        # Merge hidden inputs with the provided form data
+        form_data.update(hidden_inputs)
 
-        # Submit the form
-        submit_response = requests_session.post(FORM_URL, data=form_data, verify=False, timeout=10)
+        # Submit the form with the provided and hidden values
+        submit_response = requests_session.post(TARGET_URL, data=form_data, verify=False, timeout=10)
         submit_response.raise_for_status()
 
         # Parse the response to extract the specific div content
@@ -121,9 +110,6 @@ def submit_form():
             return jsonify({'status': 'success', 'content': target_div_html})
         else:
             return jsonify({'status': 'failed', 'message': 'Target div not found'}), 400
-
-    except Exception as e:
-        return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
 
     except Exception as e:
         return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
