@@ -16,7 +16,7 @@ Session(app)
 
 # The URL that will always be scraped
 TARGET_URL = 'https://everify.bdris.gov.bd'
-FORM_URL = 'https://everify.bdris.gov.bd/UBRNVerification/Search'
+FORM_URL = 'https://everify.bdris.gov.bd'
 
 @app.route('/convert-to-pdf', methods=['POST'])
 def convert_to_pdf():
