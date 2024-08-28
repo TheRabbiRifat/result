@@ -1,9 +1,10 @@
 import base64
-import requests
-import pdfkit
-import fitz  # PyMuPDF
+import io
 from flask import Flask, jsonify, request
 from flask_session import Session
+from pyppeteer import launch
+from PIL import Image
+import fitz  # PyMuPDF
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
@@ -16,30 +17,40 @@ Session(app)
 
 # The URL that will always be scraped
 TARGET_URL = 'https://everify.bdris.gov.bd'
-FORM_URL = 'https://everify.bdris.gov.bd/UBRNVerification/Search'
+
+async def fetch_page_content(url):
+    browser = await launch()
+    page = await browser.newPage()
+    await page.goto(url, {'waitUntil': 'networkidle2'})
+    content = await page.content()
+    await browser.close()
+    return content
+
+async def convert_to_pdf(url):
+    browser = await launch()
+    page = await browser.newPage()
+    await page.goto(url, {'waitUntil': 'networkidle2'})
+    pdf_data = await page.pdf()
+    await browser.close()
+    return pdf_data
 
 @app.route('/convert-to-pdf', methods=['POST'])
-def convert_to_pdf():
+async def convert_to_pdf_endpoint():
     try:
-        # Start a session to fetch the webpage content
-        requests_session = requests.Session()
-        requests_session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
-        })
-        
-        response = requests_session.get(TARGET_URL, verify=False, timeout=10)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Fetch the webpage content
+        page_content = await fetch_page_content(TARGET_URL)
 
-        # Extract hidden inputs including __RequestVerificationToken
-        hidden_inputs = {}
-        for hidden_input in soup.find_all("input", type="hidden"):
-            hidden_inputs[hidden_input.get("name")] = hidden_input.get("value", "")
+        # Parse hidden inputs
+        soup = BeautifulSoup(page_content, 'html.parser')
+        hidden_inputs = {input_tag.get("name"): input_tag.get("value", "") for input_tag in soup.find_all("input", type="hidden")}
 
         # Convert webpage to PDF
+        pdf_data = await convert_to_pdf(TARGET_URL)
+
+        # Save the PDF to a temporary file
         pdf_path = '/tmp/webpage.pdf'
-        pdfkit.from_url(TARGET_URL, pdf_path)
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf_data)
 
         # Extract images from PDF
         pdf_document = fitz.open(pdf_path)
@@ -71,7 +82,7 @@ def convert_to_pdf():
         return jsonify({'error': 'Conversion Error', 'details': str(e)}), 500
 
 @app.route('/submit-form', methods=['POST'])
-def submit_form():
+async def submit_form():
     try:
         # Receive form data from the client
         form_data = request.json
@@ -85,51 +96,43 @@ def submit_form():
         if not all([ubrn, birth_date, captcha_input_text, captcha_de_text, verification_token]):
             return jsonify({'error': 'Missing form fields'}), 400
 
-        # Start a session to fetch the initial page and extract hidden inputs
-        with requests.Session() as session:
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
-            })
+        # Launch browser and navigate to the target URL
+        browser = await launch()
+        page = await browser.newPage()
+        await page.goto(TARGET_URL, {'waitUntil': 'networkidle2'})
 
-            # Fetch the form page
-            response = session.get(TARGET_URL, verify=False, timeout=10)
-            response.raise_for_status()
+        # Fill in the form fields
+        await page.type('input[name="UBRN"]', ubrn)
+        await page.type('input[name="BirthDate"]', birth_date)
+        await page.type('input[name="CaptchaInputText"]', captcha_input_text)
+        await page.type('input[name="CaptchaDeText"]', captcha_de_text)
+        await page.evaluate(f'document.querySelector('input[name="__RequestVerificationToken"]').value = "{verification_token}";')
 
-            # Parse the page to extract hidden inputs
-            soup = BeautifulSoup(response.text, 'html.parser')
-            hidden_inputs = {input_tag.get('name'): input_tag.get('value', '') for input_tag in soup.find_all('input', type='hidden')}
-            
-            # Add the provided values to hidden inputs
-            hidden_inputs.update({
-                '__RequestVerificationToken': verification_token,
-                'UBRN': ubrn,
-                'BirthDate': birth_date,
-                'CaptchaInputText': captcha_input_text,
-                'CaptchaDeText': captcha_de_text,
-            })
+        # Click the submit button
+        await page.click('button[type="submit"]')  # Adjust the selector if needed
 
-            # Prepare the form data
-            multipart_form_data = {key: (None, value) for key, value in hidden_inputs.items()}
+        # Wait for navigation or response after submission
+        await page.waitForNavigation({'waitUntil': 'networkidle2'})
 
-            # Submit the form with multipart/form-data
-            submit_response = session.post(FORM_URL, files=multipart_form_data, verify=False, timeout=10)
-            submit_response.raise_for_status()
+        # Get the response content
+        response_content = await page.content()
 
-            # Parse the response to extract the specific div content
-            result_soup = BeautifulSoup(submit_response.text, 'html.parser')
-            target_div = result_soup.find('div', class_='container body-content')
+        # Parse the response to extract the specific div content
+        result_soup = BeautifulSoup(response_content, 'html.parser')
+        target_div = result_soup.find('div', class_='container body-content')
 
-            if target_div:
-                target_div_html = str(target_div)
-                return jsonify({'status': 'success', 'content': target_div_html})
-            else:
-                return jsonify({'status': 'failed', 'message': 'Target div not found'}), 400
+        await browser.close()
 
-    except requests.exceptions.RequestException as e:
-        return jsonify({'error': 'Form Submission Error', 'details': e.response.text}), 500
+        if target_div:
+            target_div_html = str(target_div)
+            return jsonify({'status': 'success', 'content': target_div_html})
+        else:
+            return jsonify({'status': 'failed', 'message': 'Target div not found'}), 400
 
     except Exception as e:
         return jsonify({'error': 'Form Submission Error', 'details': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(app.run(host='0.0.0.0', port=8080))
