@@ -105,7 +105,7 @@ async def submit_form():
         await page.type('input[name="BirthDate"]', birth_date)
         await page.type('input[name="CaptchaInputText"]', captcha_input_text)
         await page.type('input[name="CaptchaDeText"]', captcha_de_text)
-        await page.evaluate(f'document.querySelector('input[name="__RequestVerificationToken"]').value = "{verification_token}";')
+        await page.evaluate(f'document.querySelector(\'input[name="__RequestVerificationToken"]\').value = "{verification_token}";')
 
         # Click the submit button
         await page.click('button[type="submit"]')  # Adjust the selector if needed
