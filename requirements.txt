@@ -1,6 +1,7 @@
 Flask
 flask-session
-requests
+pyppeteer
+Pillow
 pdfkit
 PyMuPDF
 beautifulsoup4
