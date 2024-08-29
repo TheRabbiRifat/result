@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -18,33 +19,45 @@ def submit_form():
             return jsonify({"error": "Missing required fields"}), 400
 
         # URL of the page containing the form
-        url = "https://everify.bdris.gov.bd/"
+        form_page_url = "https://everify.bdris.gov.bd/"
 
-        # Prepare the form data
-        form_data = {
+        # Fetch the page containing the form
+        response = requests.get(form_page_url)
+        if not response.ok:
+            return jsonify({"error": "Failed to fetch the form page.", "status_code": response.status_code}), 500
+
+        # Parse the form page
+        soup = BeautifulSoup(response.text, 'html.parser')
+        form = soup.find('form')
+        
+        if form is None:
+            return jsonify({"error": "Form not found on the page."}), 500
+
+        # Extract hidden fields
+        hidden_inputs = form.find_all('input', type='hidden')
+        form_data = {input.get('name'): input.get('value') for input in hidden_inputs}
+
+        # Add or update form data with user input
+        form_data.update({
             '__RequestVerificationToken': request_verification_token,
             'UBRN': ubrn,
             'BirthDate': birth_date,
             'CaptchaDeText': captcha_de_text,
             'CaptchaInputText': captcha_input,
-        }
+        })
 
-        # Custom headers including User-Agent
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        # Submit the form
+        action_url = form.get('action')
+        if not action_url.startswith('http'):
+            action_url = form_page_url.rsplit('/', 1)[0] + '/' + action_url
 
-        # Submit the form with SSL verification disabled, custom User-Agent, and a timeout
-        response = requests.post(url, data=form_data, headers=headers, timeout=10, verify=False)
+        submit_response = requests.post(action_url, data=form_data, verify=False)  # disable SSL verification
 
         # Check if submission was successful
-        if response.ok:
-            return jsonify({"message": "Form submitted successfully!", "response": response.text}), 200
+        if submit_response.ok:
+            return jsonify({"message": "Form submitted successfully!", "response": submit_response.text}), 200
         else:
-            return jsonify({"error": "Failed to submit the form.", "status_code": response.status_code}), 500
-
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": "Request failed", "details": str(e)}), 500
+            return jsonify({"error": "Failed to submit the form.", "status_code": submit_response.status_code}), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
