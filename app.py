@@ -46,12 +46,15 @@ def submit_form():
             'CaptchaInputText': captcha_input,
         })
 
+        # Prepare the form data for multipart/form-data submission
+        multipart_form_data = {key: (None, value) for key, value in form_data.items()}
+
         # Submit the form
         action_url = form.get('action')
         if not action_url.startswith('http'):
             action_url = form_page_url.rsplit('/', 1)[0] + '/' + action_url
 
-        submit_response = requests.post(action_url, data=form_data, verify=False)  # disable SSL verification
+        submit_response = requests.post(action_url, files=multipart_form_data, verify=False)  # disable SSL verification
 
         # Check if submission was successful
         if submit_response.ok:
