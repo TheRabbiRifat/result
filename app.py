@@ -8,24 +8,26 @@ FORM_URL = "https://everify.bdris.gov.bd/UBRNVerification/Search"
 
 @app.route('/submit_form', methods=['POST'])
 def submit_form():
-    # Extract form data from the request (sent as multipart/form-data)
+    # Extract form data from the request (multipart/form-data)
     uburn = request.form.get('UBRN')
     birth_date = request.form.get('BirthDate')
     captcha_de_text = request.form.get('CaptchaDeText')
     captcha_input_text = request.form.get('CaptchaInputText')
     request_verification_token = request.form.get('__RequestVerificationToken')
 
-    # Check if the request verification token is provided
-    if not request_verification_token:
-        return jsonify({"status": "error", "message": "__RequestVerificationToken is required"}), 400
+    # Extract cookies from the request (application/json)
+    cookies_json = request.get_json()
+    cookies = cookies_json.get('cookies', []) if cookies_json else []
 
-    # Extract the cookies from the request (user sends cookies as JSON in the request body)
-    cookies_list = request.json.get('cookies', [])
+    # Prepare cookies dictionary for the requests session
+    cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies}
 
-    # Create a dictionary for the cookies
-    cookies = {cookie['name']: cookie['value'] for cookie in cookies_list}
+    # Define the headers, including the User-Agent
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
 
-    # Define the form data to be submitted as multipart/form-data
+    # Define the form data to be submitted
     form_data = {
         "__RequestVerificationToken": request_verification_token,
         "UBRN": uburn,
@@ -35,8 +37,8 @@ def submit_form():
     }
 
     try:
-        # Perform the POST request with the multipart form data and cookies
-        response = requests.post(FORM_URL, data=form_data, cookies=cookies, verify=False)
+        # Perform the POST request with the form data and cookies
+        response = requests.post(FORM_URL, headers=headers, data=form_data, cookies=cookies_dict, verify=False)
 
         # Return the response from the form submission
         return jsonify({"status": "success", "response": response.text}), response.status_code
