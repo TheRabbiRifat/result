@@ -25,11 +25,6 @@ def submit_form():
     # Create a dictionary for the cookies
     cookies = {cookie['name']: cookie['value'] for cookie in cookies_list}
 
-    # Define the headers, including User-Agent
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-
     # Define the form data to be submitted as multipart/form-data
     form_data = {
         "__RequestVerificationToken": request_verification_token,
@@ -40,8 +35,8 @@ def submit_form():
     }
 
     try:
-        # Perform the POST request with the multipart form data, cookies, and headers
-        response = requests.post(FORM_URL, headers=headers, data=form_data, cookies=cookies, verify=False)
+        # Perform the POST request with the multipart form data and cookies
+        response = requests.post(FORM_URL, data=form_data, cookies=cookies, verify=False)
 
         # Return the response from the form submission
         return jsonify({"status": "success", "response": response.text}), response.status_code
