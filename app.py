@@ -8,7 +8,7 @@ FORM_URL = "https://everify.bdris.gov.bd/UBRNVerification/Search"
 
 @app.route('/submit_form', methods=['POST'])
 def submit_form():
-    # Extract form data from the request
+    # Extract form data from the request (sent as multipart/form-data)
     uburn = request.form.get('UBRN')
     birth_date = request.form.get('BirthDate')
     captcha_de_text = request.form.get('CaptchaDeText')
@@ -19,12 +19,18 @@ def submit_form():
     if not request_verification_token:
         return jsonify({"status": "error", "message": "__RequestVerificationToken is required"}), 400
 
-    # Define the headers
+    # Extract the cookies from the request (user sends cookies as JSON in the request body)
+    cookies_list = request.json.get('cookies', [])
+
+    # Create a dictionary for the cookies
+    cookies = {cookie['name']: cookie['value'] for cookie in cookies_list}
+
+    # Define the headers, including User-Agent
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
 
-    # Define the form data to be submitted
+    # Define the form data to be submitted as multipart/form-data
     form_data = {
         "__RequestVerificationToken": request_verification_token,
         "UBRN": uburn,
@@ -34,8 +40,8 @@ def submit_form():
     }
 
     try:
-        # Perform the POST request with multipart/form-data
-        response = requests.post(FORM_URL, headers=headers, data=form_data, verify=False)
+        # Perform the POST request with the multipart form data, cookies, and headers
+        response = requests.post(FORM_URL, headers=headers, data=form_data, cookies=cookies, verify=False)
 
         # Return the response from the form submission
         return jsonify({"status": "success", "response": response.text}), response.status_code
